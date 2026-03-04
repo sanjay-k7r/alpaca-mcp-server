@@ -688,6 +688,41 @@ Now that we've pushed the Docker image (containerized Alpaca's MCP Server) to Do
 ### Method 1: Render
 For a simpler approach, visit our learn article “[How to Deploy Alpaca’s MCP Server Remotely on Claude Mobile App](https://alpaca.markets/learn/how-to-deploy-alpaca-mcp-server-remotely-on-claude-mobile-app)” where we demonstrate using [Render](https://render.com/) instead.
 
+#### Render: One Service, Multiple Alpaca Accounts
+If you want to keep costs low, you can run multiple Alpaca accounts behind a single Render web service.
+
+Set your Render start command to:
+```bash
+alpaca-mcp-server serve-multi --host 0.0.0.0 --port $PORT
+```
+
+Then define suffixed credentials in Render environment variables:
+```bash
+ALPACA_API_KEY_1=...
+ALPACA_SECRET_KEY_1=...
+ALPACA_API_KEY_2=...
+ALPACA_SECRET_KEY_2=...
+ALPACA_API_KEY_3=...
+ALPACA_SECRET_KEY_3=...
+```
+
+Default endpoint mapping:
+- Account 1: `/mcp`
+- Account 2: `/mcp2`
+- Account 3: `/mcp3`
+
+Example:
+- `https://your-render-service.onrender.com/mcp`
+- `https://your-render-service.onrender.com/mcp2`
+- `https://your-render-service.onrender.com/mcp3`
+
+Optional path override per account:
+```bash
+ALPACA_MCP_PATH_1=/mcp-alpha
+ALPACA_MCP_PATH_2=/mcp-beta
+ALPACA_MCP_PATH_3=/mcp-gamma
+```
+
 ### Method 2: Google Kubernetes Engine (GKE)
 We also provide a [Helm chart](https://helm.sh/) under `alpaca-mcp-server/charts/alpaca-mcp-server` for deploying the Alpaca's MCP Server to [Kubernetes](https://kubernetes.io/) (Google Kubernetes Engine) as an example.
 

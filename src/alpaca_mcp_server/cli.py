@@ -12,6 +12,7 @@ import click
 
 # Import our server and configuration classes
 from .server import AlpacaMCPServer
+from .multi_server import run_multi_account_server
 from .config import ConfigManager
 from . import __version__
 
@@ -260,6 +261,57 @@ def status(config_file: Optional[Path]):
 
     except Exception as e:
         click.echo(f"Error checking status: {e}")
+        sys.exit(1)
+
+
+@main.command(name="serve-multi")
+@click.option(
+    '--host',
+    default='127.0.0.1',
+    envvar='HOST',
+    help='Host to bind (default: 127.0.0.1, env: HOST)'
+)
+@click.option(
+    '--port',
+    type=int,
+    default=8000,
+    envvar='PORT',
+    help='Port to bind for streamable-http transport (default: 8000, env: PORT)'
+)
+@click.option(
+    '--allowed-hosts',
+    default='',
+    envvar='ALLOWED_HOSTS',
+    help='Allowed hosts for cloud (comma-separated, env: ALLOWED_HOSTS)'
+)
+def serve_multi(host: str, port: int, allowed_hosts: str):
+    """
+    Start one HTTP service that proxies multiple Alpaca MCP workers.
+
+    Requires per-account credentials via suffixed env vars:
+      ALPACA_API_KEY_1 / ALPACA_SECRET_KEY_1
+      ALPACA_API_KEY_2 / ALPACA_SECRET_KEY_2
+      ...
+
+    Endpoint paths default to:
+      account 1 -> /mcp
+      account 2 -> /mcp2
+      account 3 -> /mcp3
+
+    Optional per-account overrides:
+      ALPACA_MCP_PATH_1=/mcp-alpha
+      ALPACA_MCP_PATH_2=/mcp-beta
+    """
+    try:
+        click.echo("Starting Alpaca MCP Server (multi-account mode)")
+        click.echo(f"   URL: http://{host}:{port}")
+        click.echo("   Route pattern: /mcp, /mcp2, /mcp3 ...")
+        click.echo()
+        run_multi_account_server(host=host, port=port, allowed_hosts=allowed_hosts)
+    except KeyboardInterrupt:
+        click.echo("\nServer stopped by user")
+    except Exception as e:
+        click.echo(f"Server error: {e}")
         sys.exit(1)
 
 
