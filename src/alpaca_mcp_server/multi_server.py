@@ -115,51 +115,61 @@ def _is_port_open(host: str, port: int) -> bool:
 
 def _start_workers(routes: List[AccountRoute]) -> List[subprocess.Popen[str]]:
     processes: List[subprocess.Popen[str]] = []
-    for route in routes:
-        child_env = os.environ.copy()
-        child_env.update(route.env)
-        # Worker processes are internal-only and should not inherit external host policy.
-        child_env.pop("ALLOWED_HOSTS", None)
-        child_env["HOST"] = "127.0.0.1"
-        child_env["PORT"] = str(route.port)
-        cmd = [
-            sys.executable,
-            "-m",
-            "alpaca_mcp_server.server",
-            "--transport",
-            "streamable-http",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            str(route.port),
-        ]
-        processes.append(
-            subprocess.Popen(
+    max_wait_seconds = float(os.getenv("MULTI_WORKER_STARTUP_TIMEOUT_SECONDS", "30"))
+    poll_interval_seconds = 0.1
+    max_polls = max(1, int(max_wait_seconds / poll_interval_seconds))
+
+    try:
+        for route in routes:
+            child_env = os.environ.copy()
+            child_env.update(route.env)
+            # Worker processes are internal-only and should not inherit external host policy.
+            child_env.pop("ALLOWED_HOSTS", None)
+            child_env["HOST"] = "127.0.0.1"
+            child_env["PORT"] = str(route.port)
+            cmd = [
+                sys.executable,
+                "-m",
+                "alpaca_mcp_server.server",
+                "--transport",
+                "streamable-http",
+                "--host",
+                "127.0.0.1",
+                "--port",
+                str(route.port),
+            ]
+            process = subprocess.Popen(
                 cmd,
                 env=child_env,
                 stdout=sys.stdout,
                 stderr=sys.stderr,
                 text=True,
             )
-        )
+            processes.append(process)
 
-    # Wait for workers to bind their ports
-    for route, process in zip(routes, processes):
-        ready = False
-        for _ in range(60):
-            if process.poll() is not None:
-                break
-            if _is_port_open("127.0.0.1", route.port):
-                ready = True
-                break
-            time.sleep(0.1)
-        if not ready:
-            exit_code = process.poll()
-            if exit_code is not None:
+            # Wait for each worker before starting the next one to reduce startup CPU spikes.
+            ready = False
+            for _ in range(max_polls):
+                if process.poll() is not None:
+                    break
+                if _is_port_open("127.0.0.1", route.port):
+                    ready = True
+                    break
+                time.sleep(poll_interval_seconds)
+
+            if not ready:
+                exit_code = process.poll()
+                if exit_code is not None:
+                    raise RuntimeError(
+                        f"Account {route.index} worker exited early with code {exit_code} (port {route.port})."
+                    )
                 raise RuntimeError(
-                    f"Account {route.index} worker exited early with code {exit_code} (port {route.port})."
+                    f"Account {route.index} worker failed to start on port {route.port} "
+                    f"within {max_wait_seconds:.1f}s."
                 )
-            raise RuntimeError(f"Account {route.index} worker failed to start on port {route.port}.")
+    except Exception:
+        _stop_workers(processes)
+        raise
 
     return processes
 
