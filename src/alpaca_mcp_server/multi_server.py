@@ -118,6 +118,10 @@ def _start_workers(routes: List[AccountRoute]) -> List[subprocess.Popen[str]]:
     for route in routes:
         child_env = os.environ.copy()
         child_env.update(route.env)
+        # Worker processes are internal-only and should not inherit external host policy.
+        child_env.pop("ALLOWED_HOSTS", None)
+        child_env["HOST"] = "127.0.0.1"
+        child_env["PORT"] = str(route.port)
         cmd = [
             sys.executable,
             "-m",
@@ -150,6 +154,11 @@ def _start_workers(routes: List[AccountRoute]) -> List[subprocess.Popen[str]]:
                 break
             time.sleep(0.1)
         if not ready:
+            exit_code = process.poll()
+            if exit_code is not None:
+                raise RuntimeError(
+                    f"Account {route.index} worker exited early with code {exit_code} (port {route.port})."
+                )
             raise RuntimeError(f"Account {route.index} worker failed to start on port {route.port}.")
 
     return processes
